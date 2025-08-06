@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import re
 
 try:
-    from pinecone import Pinecone
+    from pinecone import Pinecone, ServerlessSpec
     PINECONE_AVAILABLE = True
 except ImportError:
     PINECONE_AVAILABLE = False
@@ -128,7 +128,7 @@ class PineconeVectorStore:
     """Pinecone-based vector store for semantic search"""
     
     def __init__(self, embedding_model_name: str = None):
-        self.embedding_model_name = embedding_model_name or os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        self.embedding_model_name = embedding_model_name or os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
         self.model = None
         self.index = None
         self.index_name = os.getenv("PINECONE_INDEX_NAME", "doc-chat")
@@ -163,24 +163,35 @@ class PineconeVectorStore:
             if not api_key:
                 raise ValueError("PINECONE_API_KEY environment variable is required")
             
-            # Initialize Pinecone client
+            # Initialize Pinecone
             pc = Pinecone(api_key=api_key)
             
-            # For serverless indexes, use direct connection
-            index_host = os.getenv("PINECONE_INDEX_HOST")
-            if index_host:
-                logger.info(f"Connecting directly to Pinecone serverless index at: {index_host}")
-                self.index = pc.Index(self.index_name, host=index_host)
-            else:
-                logger.info(f"Connecting to Pinecone index: {self.index_name}")
-                self.index = pc.Index(self.index_name)
+            # Check if index exists, create if not
+            existing_indexes = [index.name for index in pc.list_indexes()]
             
+            if self.index_name not in existing_indexes:
+                logger.info(f"Creating Pinecone index: {self.index_name}")
+                pc.create_index(
+                    name=self.index_name,
+                    dimension=self.dimension,
+                    metric="cosine",
+                    spec=ServerlessSpec(
+                        cloud="aws",  # or "gcp", "azure"
+                        region="us-east-1"  # choose appropriate region
+                    )
+                )
+                # Wait for index to be ready
+                while not pc.describe_index(self.index_name).status['ready']:
+                    time.sleep(1)
+            
+            # Connect to the index
+            self.index = pc.Index(self.index_name)
             logger.info(f"Connected to Pinecone index: {self.index_name}")
             
             # Get current stats
             stats = self.index.describe_index_stats()
-            self.chunks_count = stats['total_vector_count']
-            logger.info(f"Index stats: {stats['total_vector_count']} vectors, dimension: {stats['dimension']}")
+            self.chunks_count = stats.total_vector_count
+            logger.info(f"Index stats: {stats.total_vector_count} vectors")
             
         except Exception as e:
             logger.error(f"Failed to initialize Pinecone: {str(e)}")
@@ -227,13 +238,8 @@ class PineconeVectorStore:
     
     def search(self, query: str, top_k: int = 5, namespace: str = "default", filter_dict: Dict = None) -> List[Dict]:
         """Search for similar chunks in Pinecone"""
-        # Check if the specific namespace has vectors instead of global count
-        stats = self.get_stats()
-        namespace_info = stats.get("namespaces", {}).get(namespace, {})
-        namespace_count = namespace_info.get("vector_count", 0)
-        
-        if namespace_count == 0:
-            logger.warning(f"Namespace '{namespace}' is empty")
+        if self.chunks_count == 0:
+            logger.warning("Vector store is empty")
             return []
         
         # Encode query
@@ -278,19 +284,10 @@ class PineconeVectorStore:
         try:
             # Delete all vectors in namespace
             self.index.delete(delete_all=True, namespace=namespace)
-            
-            # Update chunks_count by getting fresh stats from Pinecone
-            # Don't just set to 0, as other namespaces may still have vectors
-            stats = self.index.describe_index_stats()
-            self.chunks_count = stats.total_vector_count
-            
+            self.chunks_count = 0
             logger.info(f"Vector store namespace '{namespace}' cleared")
         except Exception as e:
-            # If namespace doesn't exist, that's fine - it's already "clear"
-            if "not found" in str(e).lower() or "404" in str(e):
-                logger.info(f"Namespace '{namespace}' doesn't exist (already clear)")
-            else:
-                logger.error(f"Error clearing vector store: {str(e)}")
+            logger.error(f"Error clearing vector store: {str(e)}")
     
     def get_stats(self) -> Dict:
         """Get index statistics"""
