@@ -131,7 +131,7 @@ class PineconeVectorStore:
         self.embedding_model_name = embedding_model_name or os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
         self.model = None
         self.index = None
-        self.index_name = os.getenv("PINECONE_INDEX_NAME", "document-reasoning")
+        self.index_name = os.getenv("PINECONE_INDEX_NAME", "doc-chat")
         self.dimension = None
         self.chunks_count = 0
         
