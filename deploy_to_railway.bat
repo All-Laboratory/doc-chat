@@ -6,13 +6,24 @@ echo 📁 Adding all files...
 git add .
 
 echo 📝 Committing changes...
-git commit -m "Fix embedding model timeout issue for Railway deployment
+git commit -m "Fix Railway deployment: embedding timeout + image size issues
 
+🚀 EMBEDDING MODEL FIXES:
 - Switch from intfloat/e5-large-v2 to sentence-transformers/all-MiniLM-L6-v2 
 - Add fallback model loading with error handling
 - Optimize startup process with better logging  
-- Add Railway-specific configurations
+
+📦 IMAGE SIZE OPTIMIZATIONS:
+- Switch to Nixpacks instead of Docker for better size optimization
+- Add CPU-only PyTorch installation (saves ~2GB)
+- Create ultra-minimal requirements.railway.txt
+- Add Alpine Linux base with aggressive cleanup
+- Add comprehensive .dockerignore file
+
+⚙️ RAILWAY CONFIGURATIONS:
 - Disable reload mode for production
+- Add PORT environment variable support
+- Optimized cache directories
 - Add comprehensive deployment guide"
 
 echo 📤 Pushing to GitHub...

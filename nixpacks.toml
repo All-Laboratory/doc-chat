@@ -1,0 +1,35 @@
+[build]
+# Use Python with minimal dependencies
+providers = ["python"]
+
+[variables]
+# Optimize for Railway
+NIXPACKS_PYTHON_VERSION = "3.11"
+NIXPACKS_INSTALL_CMD = "pip install --no-cache-dir -r requirements.railway.txt"
+# Use CPU-only PyTorch to reduce image size
+TORCH_INDEX_URL = "https://download.pytorch.org/whl/cpu"
+# Cache optimization
+TRANSFORMERS_CACHE = "/tmp/transformers_cache"
+HF_HOME = "/tmp/huggingface_cache"
+# Embedding model optimization
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+[phases.build]
+dependsOn = ["install"]
+cmds = [
+    "echo 'Building for Railway with optimized settings...'",
+    "pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu",
+    "pip cache purge",
+    "find /opt/venv -name '*.pyc' -delete",
+    "find /opt/venv -name '__pycache__' -delete"
+]
+
+[phases.install]
+cmds = [
+    "echo 'Installing minimal dependencies...'",
+    "pip install --no-cache-dir --upgrade pip",
+    "pip install --no-cache-dir -r requirements.railway.txt"
+]
+
+[start]
+cmd = "python start_server.py"
