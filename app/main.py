@@ -230,17 +230,25 @@ async def root():
     return {
         "message": "Document Reasoning Assistant API",
         "version": "1.0.0",
+        "mode": "minimal" if not CLOUD_RETRIEVER_AVAILABLE else "full",
         "endpoints": {
             "hackrx": "/hackrx/run",
             "hackrx_v1": "/api/v1/hackrx/run",
             "health": "/health",
-            "test": "/test"
+            "environment": "/env",
+            "test": "/test",
+            "stats": "/stats",
+            "docs": "/docs"
         }
     }
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with enhanced system information"""
+    import platform
+    import psutil
+    from datetime import datetime
+    
     def is_json_serializable(obj):
         """Check if object is JSON serializable"""
         try:
@@ -276,14 +284,28 @@ async def health_check():
         except Exception as e:
             stats = {"error": f"Failed to get stats: {str(e)}"}
     
+    # Get system information
+    system_info = {
+        "platform": platform.system(),
+        "python_version": platform.python_version(),
+        "cpu_count": psutil.cpu_count(),
+        "memory_total_gb": round(psutil.virtual_memory().total / (1024**3), 2),
+        "memory_available_gb": round(psutil.virtual_memory().available / (1024**3), 2),
+        "timestamp": datetime.now().isoformat()
+    }
+    
     return {
         "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0",
         "components": {
             "document_extractor": document_extractor is not None,
             "document_retriever": document_retriever is not None,
             "llm_engine": llm_engine is not None,
-            "database": db.is_connected()
+            "database": db.is_connected(),
+            "cloud_retriever_available": CLOUD_RETRIEVER_AVAILABLE
         },
+        "system": system_info,
         "stats": stats
     }
 
@@ -498,6 +520,27 @@ async def get_system_stats():
                 "database": db.is_connected()
             }
         }
+    }
+
+@app.get("/env")
+async def environment_info():
+    """Get environment configuration information"""
+    from datetime import datetime
+    
+    env_vars = {
+        "PORT": os.getenv("PORT", "8000"),
+        "PINECONE_API_KEY": "Set" if os.getenv("PINECONE_API_KEY") else "Not set",
+        "GROQ_API_KEY": "Set" if os.getenv("GROQ_API_KEY") else "Not set",
+        "DATABASE_URL": "Set" if os.getenv("DATABASE_URL") else "Not set",
+        "RAILWAY_ENVIRONMENT": os.getenv("RAILWAY_ENVIRONMENT", "Not Railway"),
+        "NODE_ENV": os.getenv("NODE_ENV", "Not set")
+    }
+    
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "environment": env_vars,
+        "cloud_retriever_available": CLOUD_RETRIEVER_AVAILABLE,
+        "mode": "minimal" if not CLOUD_RETRIEVER_AVAILABLE else "full"
     }
 
 @app.get("/test")
