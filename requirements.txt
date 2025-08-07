@@ -1,25 +1,25 @@
-# Core FastAPI and web server
-fastapi>=0.104.1
-uvicorn>=0.24.0
-python-multipart>=0.0.6
-python-dotenv>=1.0.0
-requests>=2.31.0
+# Emergency ultra-minimal - absolute smallest possible deployment
+# Use this if image size still exceeds 4GB
 
-# Document processing
-pymupdf>=1.23.0
-python-docx>=0.8.11
+# Core web framework only
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
 
-# Database
-psycopg2-binary>=2.9.9
+# Absolutely essential for file uploads
+python-multipart==0.0.6
 
-# Vector database and embeddings
-sentence-transformers>=2.2.2
-pinecone>=7.3.0
+# Basic HTTP client
+requests==2.31.0
 
-# LLM API
-groq>=0.4.1
+# LLM API (essential)
+groq==0.4.1
 
-# PyTorch (CPU only for Railway)
-torch>=2.0.0,<2.4.0
-torchvision>=0.15.0,<0.19.0
-torchaudio>=2.0.0,<2.4.0
+# Everything else disabled for emergency deployment:
+# pymupdf - document processing (adds ~20MB)
+# python-docx - document processing (adds ~5MB)  
+# psycopg2-binary - database (adds ~15MB)
+# numpy - math operations (adds ~30MB)
+# pinecone-client - vector database (adds ~50MB)
+
+# Total estimated size with this config: <200MB of Python packages

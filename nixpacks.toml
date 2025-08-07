@@ -1,31 +1,7 @@
-# Ultra-lightweight Railway deployment - optimized for <4GB image size
-[phases.setup]
-# Minimal system packages - only essential ones
-nixPkgs = ["python311", "pip"]
-
-[phases.install]
-# Multi-step install with cleanup to minimize image size
-cmds = [
-  "pip install --upgrade pip",
-  # Force binary-only installation to avoid compilation
-  "pip install --no-cache-dir --only-binary=:all: -r requirements.railway.ultra.txt",
-  # Aggressive cleanup to reduce image size
-  "pip cache purge",
-  "rm -rf /tmp/* /var/tmp/*",
-  "find /nix -name '*.pyc' -delete 2>/dev/null || true",
-  "find /nix -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true"
-]
-
+# Simple Railway deployment with Nixpacks
 [variables]
-# Minimal configuration for size optimization
 PYTHON_VERSION = "3.11"
 PIP_NO_CACHE_DIR = "1"
-PIP_DISABLE_PIP_VERSION_CHECK = "1"
-# Force only binary wheels - no compilation
-PIP_ONLY_BINARY = ":all:"
-PIP_PREFER_BINARY = "1"
-# Disable unnecessary features to save space
-PIP_NO_BUILD_ISOLATION = "1"
 
 [start]
 cmd = "python start_server.py"
