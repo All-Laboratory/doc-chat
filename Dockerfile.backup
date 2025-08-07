@@ -1,0 +1,70 @@
+# Use Python slim for better compatibility (smaller than full but more reliable than Alpine)
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy the minimal requirements file
+COPY requirements.railway.txt .
+
+# Install Python dependencies step by step for better error handling
+RUN pip install --no-cache-dir --upgrade pip
+
+# Install PyTorch CPU-only first
+RUN pip install --no-cache-dir torch==2.1.0+cpu torchvision==0.16.0+cpu torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
+
+# Install core web framework
+RUN pip install --no-cache-dir \
+    fastapi==0.104.1 \
+    uvicorn[standard]==0.24.0 \
+    python-multipart==0.0.6 \
+    python-dotenv==1.0.0 \
+    requests==2.31.0
+
+# Install document processing
+RUN pip install --no-cache-dir \
+    pymupdf==1.23.0 \
+    python-docx==1.0.1
+
+# Install ML and vector database
+RUN pip install --no-cache-dir \
+    sentence-transformers==2.2.2 \
+    pinecone==7.3.0
+
+# Install database and LLM API
+RUN pip install --no-cache-dir \
+    psycopg2-binary==2.9.9 \
+    groq==0.4.1
+
+# Clean up
+RUN pip cache purge && \
+    rm -rf ~/.cache/pip /tmp/* /var/tmp/* && \
+    find /usr/local -name '*.pyc' -delete && \
+    find /usr/local -name '__pycache__' -type d -exec rm -rf {} + || true
+
+# Copy only essential application files
+COPY app/ ./app/
+COPY start_server.py .
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash user && \
+    chown -R user:user /app
+
+USER user
+
+# Expose port
+EXPOSE 8000
+
+# Health check using Python instead of curl
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=10).raise_for_status()" || exit 1
+
+# Start the application
+CMD ["python", "start_server.py"]

@@ -2,6 +2,9 @@
 echo 🚀 Deploying Doc Chat fixes to Railway...
 echo.
 
+echo 🔧 Preparing Railway requirements...
+python prepare_railway.py
+
 echo 📁 Adding all files...
 git add .
 
