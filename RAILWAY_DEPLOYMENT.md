@@ -1,15 +1,25 @@
-# Railway Deployment Guide - Doc Chat Application
+# 🚂 Railway Deployment Guide - Doc Chat Application
 
-This guide will help you deploy the doc-chat application on Railway successfully, fixing the embedding model timeout issue.
+## ✅ CURRENT STATUS: READY FOR DEPLOYMENT!
 
-## Problem Fixed
+The application is now **fully working** and optimized for Railway deployment!
 
-The application was getting stuck at:
-```
-INFO:sentence_transformers.SentenceTransformer:Load pretrained SentenceTransformer: intfloat/e5-large-v2
-```
+## 🎉 Latest Fixes Applied (January 2025)
 
-**Root Cause**: The `intfloat/e5-large-v2` model is very large (~1.3GB) and takes too long to download and initialize on Railway, causing deployment timeouts.
+### ✅ **Startup Issues Resolved**
+- Fixed `test_simple.py` error - container now uses correct `start_server.py`
+- Updated `railway.json` and `nixpacks.toml` with proper startup commands
+- Fixed LLM provider configuration (default changed to Groq)
+
+### ✅ **Rate Limiting Optimized** 
+- Enhanced retry logic with exponential backoff
+- Changed default model to `llama3-8b-8192` (faster, less rate limited)
+- Better error handling for API rate limits
+
+### ✅ **Deployment Configuration Fixed**
+- All Railway configuration files corrected
+- Proper environment variable handling
+- Production-ready monitoring and health checks
 
 ## Solution
 
