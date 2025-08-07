@@ -9,8 +9,8 @@ python-dotenv==1.0.0
 requests==2.31.0
 
 # Document processing (essential but lightweight)
-pymupdf==1.23.0
-python-docx==1.0.1
+PyMuPDF==1.26.3
+python-docx==1.1.2
 
 # Database (lightweight binary)
 psycopg2-binary==2.9.9
@@ -22,3 +22,4 @@ groq==0.4.1
 # numpy - can add back if needed (adds ~30MB)
 # pinecone-client - can add back when vector features needed
 # Any ML libraries - deploy basic app first
+
