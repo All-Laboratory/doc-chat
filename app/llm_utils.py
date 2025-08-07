@@ -78,9 +78,9 @@ class GroqProvider(LLMProvider):
             "temperature": temperature
         }
         
-        # Retry logic for rate limiting
-        max_retries = 3
-        base_delay = 1  # Start with 1 second delay
+        # Enhanced retry logic for rate limiting
+        max_retries = 5
+        base_delay = 2  # Start with 2 second delay
         
         for attempt in range(max_retries + 1):
             try:
@@ -153,7 +153,7 @@ class DocumentReasoningLLM:
     
     def __init__(self):
         self.provider_name = os.getenv("LLM_PROVIDER", "groq").lower()
-        self.model_name = os.getenv("MODEL_NAME", "llama3-70b-8192")
+        self.model_name = os.getenv("MODEL_NAME", "llama3-8b-8192")
         self.provider = self._initialize_provider()
         
         logger.info(f"Initialized LLM with provider: {self.provider_name}, model: {self.model_name}")
