@@ -44,15 +44,18 @@ llm_engine = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown events"""
+    """Startup and shutdown events with timeout handling for Railway"""
     # Startup
     global document_extractor, document_retriever, llm_engine
     
-    logger.info("Starting Document Reasoning Assistant...")
+    logger.info("🚀 Starting Document Reasoning Assistant...")
+    start_time = time.time()
     
     try:
-        # Initialize components
+        # Initialize document extractor first (fast)
+        logger.info("📄 Initializing Document Extractor...")
         document_extractor = DocumentExtractor()
+        logger.info("✅ Document Extractor initialized")
         
         # Check if Pinecone is properly configured
         if not CLOUD_RETRIEVER_AVAILABLE:
@@ -62,19 +65,38 @@ async def lifespan(app: FastAPI):
         if not pinecone_api_key:
             raise RuntimeError("PINECONE_API_KEY environment variable is required")
         
-        # Check PostgreSQL connection
+        # Check PostgreSQL connection (optional)
+        logger.info("🗄️ Checking database connection...")
         if not db.is_connected():
-            logger.warning("PostgreSQL database not connected. Some features may not work properly.")
+            logger.warning("⚠️ PostgreSQL database not connected. Some features may not work properly.")
+        else:
+            logger.info("✅ Database connected")
         
-        logger.info("Initializing Cloud Document Retriever (Pinecone)...")
-        document_retriever = CloudDocumentRetriever()
+        # Initialize Cloud Document Retriever (this loads the embedding model)
+        logger.info("🧠 Initializing Cloud Document Retriever (Embedding Model + Pinecone)...")
+        logger.info("📥 This may take a moment to download the embedding model...")
         
+        try:
+            document_retriever = CloudDocumentRetriever()
+            logger.info("✅ Cloud Document Retriever initialized successfully")
+        except Exception as retriever_error:
+            logger.error(f"❌ Failed to initialize document retriever: {str(retriever_error)}")
+            # Try to provide a fallback or better error message
+            raise RuntimeError(f"Document retriever initialization failed: {str(retriever_error)}")
+        
+        # Initialize LLM engine
+        logger.info("🤖 Initializing LLM Engine...")
         llm_engine = DocumentReasoningLLM()
+        logger.info("✅ LLM Engine initialized")
         
-        logger.info("All components initialized successfully. Using Pinecone Cloud retriever.")
+        initialization_time = time.time() - start_time
+        logger.info(f"🎉 All components initialized successfully in {initialization_time:.2f}s")
+        logger.info("🌐 Application is ready to serve requests!")
         
     except Exception as e:
-        logger.error(f"Failed to initialize components: {str(e)}")
+        initialization_time = time.time() - start_time
+        logger.error(f"❌ Failed to initialize components after {initialization_time:.2f}s: {str(e)}")
+        logger.error("💡 Tip: If using a large embedding model, try setting EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2")
         raise
     
     yield

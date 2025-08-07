@@ -128,6 +128,7 @@ class PineconeVectorStore:
     """Pinecone-based vector store for semantic search"""
     
     def __init__(self, embedding_model_name: str = None):
+        # Use smaller, faster model for Railway deployment
         self.embedding_model_name = embedding_model_name or os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
         self.model = None
         self.index = None
@@ -142,19 +143,43 @@ class PineconeVectorStore:
         self._initialize_pinecone()
     
     def _load_model(self):
-        """Load the sentence transformer model"""
+        """Load the sentence transformer model with optimizations for Railway"""
         try:
             logger.info(f"Loading embedding model: {self.embedding_model_name}")
-            self.model = SentenceTransformer(self.embedding_model_name)
             
-            # Get model dimension by encoding a test string
-            test_embedding = self.model.encode(["test"])
-            self.dimension = test_embedding.shape[1]
-            logger.info(f"Model loaded successfully. Embedding dimension: {self.dimension}")
+            # Optimize for Railway deployment - use smaller model if large one fails
+            fallback_models = [
+                self.embedding_model_name,
+                "sentence-transformers/all-MiniLM-L6-v2",  # Small and fast (384 dim)
+                "sentence-transformers/paraphrase-MiniLM-L6-v2"  # Alternative small model
+            ]
+            
+            for model_name in fallback_models:
+                try:
+                    logger.info(f"Attempting to load model: {model_name}")
+                    self.model = SentenceTransformer(
+                        model_name,
+                        cache_folder=os.getenv("TRANSFORMERS_CACHE", "/tmp/transformers_cache"),
+                        device="cpu"  # Force CPU to avoid CUDA issues on Railway
+                    )
+                    
+                    # Get model dimension by encoding a test string
+                    test_embedding = self.model.encode(["test"], show_progress_bar=False)
+                    self.dimension = test_embedding.shape[1]
+                    
+                    self.embedding_model_name = model_name  # Update to actual loaded model
+                    logger.info(f"Model loaded successfully: {model_name} (dimension: {self.dimension})")
+                    return  # Success, exit the loop
+                    
+                except Exception as model_error:
+                    logger.warning(f"Failed to load {model_name}: {str(model_error)}")
+                    if model_name == fallback_models[-1]:  # Last model failed
+                        raise model_error
+                    continue  # Try next model
             
         except Exception as e:
-            logger.error(f"Failed to load embedding model: {str(e)}")
-            raise
+            logger.error(f"Failed to load any embedding model: {str(e)}")
+            raise RuntimeError(f"Could not initialize embedding model. Error: {str(e)}")
     
     def _initialize_pinecone(self):
         """Initialize Pinecone connection and index"""
