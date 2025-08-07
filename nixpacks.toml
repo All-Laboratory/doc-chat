@@ -1,46 +1,31 @@
-[build]
-providers = ["python"]
-
-[variables]
-# Python version
-PYTHON_VERSION = "3.11"
-# Pip options
-PIP_NO_CACHE_DIR = "1"
-PIP_DISABLE_PIP_VERSION_CHECK = "1"
-# PyTorch CPU-only
-TORCH_INDEX_URL = "https://download.pytorch.org/whl/cpu"
-# Cache directories
-TRANSFORMERS_CACHE = "/tmp/transformers_cache"
-HF_HOME = "/tmp/huggingface_cache"
-HUGGINGFACE_HUB_CACHE = "/tmp/huggingface_cache"
-# Model selection
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
+# Railway deployment configuration with C++ build support
 [phases.setup]
-cmds = ["echo 'Setting up Railway-optimized Python environment...'", "pip install --upgrade pip"]
+nixPkgs = [
+  "python311", 
+  "pip", 
+  "gcc", 
+  "gxx", 
+  "pkg-config", 
+  "cmake", 
+  "make"
+]
 
 [phases.install]
-dependsOn = ["setup"]
 cmds = [
-    "echo 'Installing core dependencies...'",
-    "pip install fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 python-dotenv==1.0.0 requests==2.31.0",
-    "echo 'Installing PyTorch CPU-only...'", 
-    "pip install torch==2.1.0+cpu torchvision==0.16.0+cpu torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu",
-    "echo 'Installing ML and document processing...'",
-    "pip install sentence-transformers==2.2.2 pymupdf==1.23.0 python-docx==1.0.1",
-    "echo 'Installing database and API clients...'",
-    "pip install psycopg2-binary==2.9.9 pinecone==7.3.0 groq==0.4.1"
+  "pip install --upgrade pip",
+  "pip install --no-cache-dir --prefer-binary --only-binary=:all: -r requirements.railway.txt || pip install --no-cache-dir -r requirements.railway.txt"
 ]
 
-[phases.build]
-dependsOn = ["install"]
-cmds = [
-    "echo 'Optimizing installation...'",
-    "pip cache purge",
-    "find /opt/venv -name '*.pyc' -delete || true",
-    "find /opt/venv -name '__pycache__' -type d -exec rm -rf {} + || true",
-    "echo 'Build optimization complete'"
-]
+[variables]
+# Build configuration
+PYTHON_VERSION = "3.11"
+PIP_NO_CACHE_DIR = "1"
+PIP_DISABLE_PIP_VERSION_CHECK = "1"
+# Force binary installations where possible
+PIP_PREFER_BINARY = "1"
+# Environment variables for compilation if needed
+CC = "gcc"
+CXX = "g++"
 
 [start]
 cmd = "python start_server.py"

@@ -1,0 +1,25 @@
+# Emergency minimal deployment - no heavy ML deps
+# This will get the app running, then we can add ML features later
+
+# Core web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Document processing
+pymupdf==1.23.0
+python-docx==1.0.1
+
+# Database
+psycopg2-binary==2.9.9
+
+# API clients
+groq==0.4.1
+
+# Basic numpy for any array operations
+numpy==1.24.3
+
+# Simple alternative to pinecone for testing
+# pinecone-client==2.2.4
