@@ -147,11 +147,12 @@ class PineconeVectorStore:
         try:
             logger.info(f"Loading embedding model: {self.embedding_model_name}")
             
-            # Optimize for Railway deployment - use smaller model if large one fails
+            # Optimize for Railway deployment - use ultra-lightweight models
             fallback_models = [
                 self.embedding_model_name,
-                "sentence-transformers/all-MiniLM-L6-v2",  # Small and fast (384 dim)
-                "sentence-transformers/paraphrase-MiniLM-L6-v2"  # Alternative small model
+                "sentence-transformers/all-MiniLM-L6-v2",  # Small and fast (384 dim, ~90MB)
+                "sentence-transformers/paraphrase-MiniLM-L3-v2",  # Even smaller (384 dim, ~60MB)
+                "sentence-transformers/all-MiniLM-L12-v2"  # Alternative (384 dim, ~130MB)
             ]
             
             for model_name in fallback_models:
