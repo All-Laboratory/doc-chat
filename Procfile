@@ -1,1 +1,2 @@
-web: uvicorn app.main:app --host=0.0.0.0 --port=$PORT
+# Force Railway to use nixpacks.toml configuration
+web: python start_server.py

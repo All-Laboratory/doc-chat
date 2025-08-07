@@ -3,7 +3,14 @@ import logging
 import time
 import hashlib
 from typing import List, Dict, Tuple, Any, Optional
-from sentence_transformers import SentenceTransformer
+# Conditional import to prevent Railway auto-detection of heavy ML dependencies
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    SentenceTransformer = None
+    print("sentence-transformers not installed. Vector search disabled.")
 from dotenv import load_dotenv
 import re
 
@@ -138,6 +145,9 @@ class PineconeVectorStore:
         
         if not PINECONE_AVAILABLE:
             raise ImportError("Pinecone client not available. Install with: pip install pinecone")
+        
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            raise ImportError("sentence-transformers not available. Vector search disabled for Railway deployment.")
         
         self._load_model()
         self._initialize_pinecone()
