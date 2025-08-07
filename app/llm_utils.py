@@ -152,8 +152,8 @@ class DocumentReasoningLLM:
     """Main LLM class for document reasoning tasks"""
     
     def __init__(self):
-        self.provider_name = os.getenv("LLM_PROVIDER", "together").lower()
-        self.model_name = os.getenv("MODEL_NAME", "Qwen/Qwen1.5-14B-Chat")
+        self.provider_name = os.getenv("LLM_PROVIDER", "groq").lower()
+        self.model_name = os.getenv("MODEL_NAME", "llama3-70b-8192")
         self.provider = self._initialize_provider()
         
         logger.info(f"Initialized LLM with provider: {self.provider_name}, model: {self.model_name}")
