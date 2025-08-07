@@ -57,13 +57,15 @@ async def lifespan(app: FastAPI):
         document_extractor = DocumentExtractor()
         logger.info("✅ Document Extractor initialized")
         
-        # Check if Pinecone is properly configured
+        # Check if we're in minimal mode
         if not CLOUD_RETRIEVER_AVAILABLE:
-            raise RuntimeError("Pinecone client is not available. Please install with: pip install pinecone")
+            logger.warning("🚨 MINIMAL MODE: Running without vector search capabilities")
+            logger.warning("🚨 Only basic keyword matching will be available")
         
+        # In minimal mode, don't require Pinecone API key
         pinecone_api_key = os.getenv("PINECONE_API_KEY")
-        if not pinecone_api_key:
-            raise RuntimeError("PINECONE_API_KEY environment variable is required")
+        if not pinecone_api_key and CLOUD_RETRIEVER_AVAILABLE:
+            logger.warning("⚠️ PINECONE_API_KEY not set - running in basic mode")
         
         # Check PostgreSQL connection (optional)
         logger.info("🗄️ Checking database connection...")
@@ -186,9 +188,12 @@ async def hackathon_process(request: HackathonRequest, req: Request):
         document_id = str(uuid.uuid4())
         document_retriever.process_document(extraction_result["text"], extraction_result["metadata"], document_id)
         
-        # Brief delay to handle Pinecone serverless propagation
-        logger.info("Waiting for Pinecone indexing to complete...")
-        time.sleep(6)
+        # In minimal mode, no need to wait for Pinecone
+        if CLOUD_RETRIEVER_AVAILABLE and os.getenv("PINECONE_API_KEY"):
+            logger.info("Waiting for Pinecone indexing to complete...")
+            time.sleep(6)
+        else:
+            logger.info("Minimal mode: No Pinecone wait needed")
 
         # Remove temporary file
         os.unlink(temp_file_path)

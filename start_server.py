@@ -8,7 +8,17 @@ import os
 import sys
 
 # Add the current directory to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
+# Also add the app directory
+app_dir = os.path.join(current_dir, 'app')
+if os.path.exists(app_dir):
+    sys.path.insert(0, app_dir)
+    
+print(f"🔍 Current working directory: {os.getcwd()}")
+print(f"🔍 Python path includes: {current_dir}")
+print(f"🔍 App directory: {app_dir}")
 
 if __name__ == "__main__":
     print("🚀 Starting HackRX API Server...")
