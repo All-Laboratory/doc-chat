@@ -4,4 +4,4 @@ PYTHON_VERSION = "3.11"
 PIP_NO_CACHE_DIR = "1"
 
 [start]
-cmd = "python test_simple.py"
+cmd = "python start_server.py"
