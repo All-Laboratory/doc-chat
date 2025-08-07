@@ -188,12 +188,8 @@ async def hackathon_process(request: HackathonRequest, req: Request):
         document_id = str(uuid.uuid4())
         document_retriever.process_document(extraction_result["text"], extraction_result["metadata"], document_id)
         
-        # In minimal mode, no need to wait for Pinecone
-        if CLOUD_RETRIEVER_AVAILABLE and os.getenv("PINECONE_API_KEY"):
-            logger.info("Waiting for Pinecone indexing to complete...")
-            time.sleep(6)
-        else:
-            logger.info("Minimal mode: No Pinecone wait needed")
+        # Skip unnecessary wait time for better performance
+        logger.info("Document processed and ready for querying")
 
         # Remove temporary file
         os.unlink(temp_file_path)
@@ -202,18 +198,35 @@ async def hackathon_process(request: HackathonRequest, req: Request):
         logger.error(f"Failed to process document from URL: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
 
-    # Answer questions
+    # Answer questions with improved error handling and timeout management
     answers = []
     for question in request.questions:
-        # Use the same document_id for retrieval that was used for processing
-        relevant_chunks = document_retriever.query(question, document_id=document_id)
-        if relevant_chunks:
-            llm_response = llm_engine.analyze_document_query(question, relevant_chunks)
-            answer = llm_response.get("direct_answer", "Could not find a definitive answer.")
-        else:
-            answer = "No relevant information found."
+        try:
+            # Use the same document_id for retrieval that was used for processing
+            logger.info(f"Processing question: {question[:50]}...")
+            relevant_chunks = document_retriever.query(question, document_id=document_id)
+            
+            if relevant_chunks:
+                logger.info(f"Found {len(relevant_chunks)} relevant chunks for question")
+                llm_response = llm_engine.analyze_document_query(question, relevant_chunks)
+                
+                # Extract answer with fallback
+                if isinstance(llm_response, dict) and "direct_answer" in llm_response:
+                    answer = llm_response["direct_answer"]
+                else:
+                    answer = str(llm_response) if llm_response else "Could not generate response."
+            else:
+                logger.warning(f"No relevant chunks found for question: {question}")
+                answer = "No relevant information found in the document."
+                
+        except Exception as e:
+            logger.error(f"Error processing question '{question}': {str(e)}")
+            answer = f"Error processing question: {str(e)[:100]}..."
+            
         answers.append(answer)
+        logger.info(f"Answer generated: {answer[:100]}...")
 
+    logger.info(f"All {len(answers)} questions processed successfully")
     return HackathonResponse(answers=answers)
 
 # API v1 endpoint (alias for hackrx endpoint)

@@ -84,7 +84,7 @@ class GroqProvider(LLMProvider):
         
         for attempt in range(max_retries + 1):
             try:
-                response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
+                response = requests.post(self.base_url, headers=headers, json=payload, timeout=30)
                 response.raise_for_status()
                 
                 result = response.json()
