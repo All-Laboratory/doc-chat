@@ -1,31 +1,31 @@
-# Railway deployment configuration with C++ build support
+# Ultra-lightweight Railway deployment - optimized for <4GB image size
 [phases.setup]
-nixPkgs = [
-  "python311", 
-  "pip", 
-  "gcc", 
-  "gxx", 
-  "pkg-config", 
-  "cmake", 
-  "make"
-]
+# Minimal system packages - only essential ones
+nixPkgs = ["python311", "pip"]
 
 [phases.install]
+# Multi-step install with cleanup to minimize image size
 cmds = [
   "pip install --upgrade pip",
-  "pip install --no-cache-dir --prefer-binary --only-binary=:all: -r requirements.railway.txt || pip install --no-cache-dir -r requirements.railway.txt"
+  # Force binary-only installation to avoid compilation
+  "pip install --no-cache-dir --only-binary=:all: -r requirements.railway.minimal.txt",
+  # Aggressive cleanup to reduce image size
+  "pip cache purge",
+  "rm -rf /tmp/* /var/tmp/*",
+  "find /nix -name '*.pyc' -delete 2>/dev/null || true",
+  "find /nix -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true"
 ]
 
 [variables]
-# Build configuration
+# Minimal configuration for size optimization
 PYTHON_VERSION = "3.11"
 PIP_NO_CACHE_DIR = "1"
 PIP_DISABLE_PIP_VERSION_CHECK = "1"
-# Force binary installations where possible
+# Force only binary wheels - no compilation
+PIP_ONLY_BINARY = ":all:"
 PIP_PREFER_BINARY = "1"
-# Environment variables for compilation if needed
-CC = "gcc"
-CXX = "g++"
+# Disable unnecessary features to save space
+PIP_NO_BUILD_ISOLATION = "1"
 
 [start]
 cmd = "python start_server.py"

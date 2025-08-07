@@ -1,23 +1,24 @@
-# Ultra-minimal requirements for Railway - emergency fallback
-# Only includes packages with guaranteed binary wheels
+# Ultra-minimal requirements optimized for <4GB Railway deployment
+# Only packages with guaranteed small binary wheels
 
-# Core web framework (essential)
+# Core web framework (essential) - using minimal uvicorn
 fastapi==0.104.1
 uvicorn==0.24.0
 python-multipart==0.0.6
 python-dotenv==1.0.0
 requests==2.31.0
 
-# Document processing (essential)
+# Document processing (essential but lightweight)
 pymupdf==1.23.0
 python-docx==1.0.1
 
-# Database (optional but included)
+# Database (lightweight binary)
 psycopg2-binary==2.9.9
 
-# LLM API (essential)
+# LLM API (minimal footprint)
 groq==0.4.1
 
-# No numpy to avoid any potential compilation issues
-# Vector database temporarily disabled - can be added back later
-# pinecone-client==3.0.0
+# Temporarily disabled heavy dependencies:
+# numpy - can add back if needed (adds ~30MB)
+# pinecone-client - can add back when vector features needed
+# Any ML libraries - deploy basic app first
