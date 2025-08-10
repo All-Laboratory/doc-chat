@@ -254,18 +254,26 @@ class DocumentReasoningLLM:
 Respond with a valid JSON object in this exact format:
 
 {{
-  "direct_answer": "A concise, direct answer to the user's question",
+  "direct_answer": "A comprehensive, detailed answer to the user's question including specific information from the document. Include relevant details such as time periods, amounts, conditions, limitations, and any other important specifics mentioned in the document. The answer should be complete and informative, not just a brief response.",
   "decision": "Approved" | "Denied" | "Uncertain",
-  "justification": "Clear reasoning based on the document analysis",
+  "justification": "Detailed reasoning based on the document analysis, explaining how the document supports the answer with specific references to relevant clauses, conditions, and requirements",
   "referenced_clauses": [
     {{
       "clause_id": "section identifier from document",
       "text": "relevant excerpt from the clause",
-      "reasoning": "why this clause is relevant to the decision"
+      "reasoning": "detailed explanation of why this clause is relevant to the decision and how it supports the answer"
     }}
   ],
-  "additional_info": "Any additional relevant information or conditions"
+  "additional_info": "Any additional relevant information, conditions, limitations, or related details from the document that provide context or important supplementary information"
 }}
+
+## ANSWER REQUIREMENTS:
+- Provide DETAILED, COMPREHENSIVE answers, not brief responses
+- Include specific information like time periods, amounts, percentages, conditions, and limitations
+- Reference exact requirements, waiting periods, coverage limits, and eligibility criteria
+- Explain the full context of the answer with supporting details from the document
+- If the document specifies conditions or exceptions, include them in your answer
+- Make the answer self-contained and informative
 
 ## DECISION CRITERIA:
 - **Approved**: The document clearly supports the request/claim
