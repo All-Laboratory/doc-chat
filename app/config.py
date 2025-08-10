@@ -12,8 +12,11 @@ class PineconeConfig:
     def __init__(self):
         # API Configuration
         self.api_key: str = os.getenv("PINECONE_API_KEY", "")
+        self.enabled: bool = bool(self.api_key)  # Only enable if API key is provided
         if not self.api_key:
-            raise ValueError("PINECONE_API_KEY environment variable is required")
+            # Make Pinecone optional - just log a warning
+            import logging
+            logging.warning("PINECONE_API_KEY not set - Pinecone features will be disabled")
         
         # Index Configuration
         self.index_name: str = os.getenv("PINECONE_INDEX_NAME", "document-reasoning")
@@ -121,8 +124,10 @@ class AppConfig:
     
     def validate(self) -> bool:
         """Validate all configurations"""
+        # Only validate Pinecone if it's enabled
+        pinecone_valid = self.pinecone.validate() if self.pinecone.enabled else True
         return (
-            self.pinecone.validate() and
+            pinecone_valid and
             self.chunking.validate()
         )
     

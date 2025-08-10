@@ -21,11 +21,24 @@ class LLMProvider:
         raise NotImplementedError
 
 class TogetherAIProvider(LLMProvider):
-    """Together AI provider for Qwen and other models"""
+    """Together AI provider for various models including Moonshot Kimi"""
     
     def __init__(self, api_key: str, model_name: str):
         super().__init__(api_key, model_name)
-        self.base_url = "https://api.together.xyz/inference"
+        # Use chat endpoint for better model compatibility
+        self.base_url = "https://api.together.xyz/v1/chat/completions"
+        self.is_chat_model = self._is_chat_model(model_name)
+    
+    def _is_chat_model(self, model_name: str) -> bool:
+        """Check if model requires chat format"""
+        chat_models = [
+            "moonshotai/kimi",
+            "meta-llama/Llama-2",
+            "meta-llama/Llama-3",
+            "mistralai/",
+            "NousResearch/"
+        ]
+        return any(chat_model in model_name for chat_model in chat_models)
     
     def generate_response(self, prompt: str, max_tokens: int = 2000, temperature: float = 0.3) -> str:
         headers = {
@@ -33,21 +46,40 @@ class TogetherAIProvider(LLMProvider):
             "Content-Type": "application/json"
         }
         
-        payload = {
-            "model": self.model_name,
-            "prompt": prompt,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": 0.9,
-            "stop": ["<|im_end|>", "<|endoftext|>"]
-        }
+        if self.is_chat_model:
+            # Use chat format for modern models like Moonshot Kimi
+            payload = {
+                "model": self.model_name,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": 0.9
+            }
+        else:
+            # Use completion format for older models
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": 0.9,
+                "stop": ["<|im_end|>", "<|endoftext|>"]
+            }
         
         try:
             response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
             
             result = response.json()
-            return result["output"]["choices"][0]["text"].strip()
+            
+            if self.is_chat_model:
+                # Chat format response
+                return result["choices"][0]["message"]["content"].strip()
+            else:
+                # Completion format response
+                return result["choices"][0]["text"].strip()
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Together AI API request failed: {str(e)}")
@@ -78,13 +110,13 @@ class GroqProvider(LLMProvider):
             "temperature": temperature
         }
         
-        # Enhanced retry logic for rate limiting - optimized for speed
-        max_retries = 3  # Reduced retries for faster responses
+        # Enhanced retry logic for rate limiting - improved backoff
+        max_retries = 5  # Increased retries for rate limit handling
         base_delay = 1  # Start with 1 second delay
         
         for attempt in range(max_retries + 1):
             try:
-                response = requests.post(self.base_url, headers=headers, json=payload, timeout=15)  # Reduced timeout
+                response = requests.post(self.base_url, headers=headers, json=payload, timeout=20)  # Increased timeout
                 response.raise_for_status()
                 
                 result = response.json()
@@ -149,15 +181,18 @@ class FireworksProvider(LLMProvider):
             raise
 
 class DocumentReasoningLLM:
-    """Main LLM class for document reasoning tasks"""
+    """Main LLM class for document reasoning tasks with fallback support"""
     
     def __init__(self):
         self.provider_name = os.getenv("LLM_PROVIDER", "groq").lower()
         # Use faster, smaller model for quick responses
         self.model_name = os.getenv("MODEL_NAME", "llama3-8b-8192")
         self.provider = self._initialize_provider()
+        self.fallback_providers = self._get_fallback_providers()
         
         logger.info(f"Initialized LLM with provider: {self.provider_name}, model: {self.model_name}")
+        if self.fallback_providers:
+            logger.info(f"Fallback providers available: {list(self.fallback_providers.keys())}")
     
     def _initialize_provider(self) -> LLMProvider:
         """Initialize the appropriate LLM provider"""
@@ -181,6 +216,37 @@ class DocumentReasoningLLM:
             
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider_name}")
+    
+    def _get_fallback_providers(self) -> Dict[str, LLMProvider]:
+        """Get available fallback providers"""
+        fallbacks = {}
+        
+        # Try to initialize fallback providers
+        if self.provider_name != "together":
+            together_key = os.getenv("TOGETHER_API_KEY")
+            if together_key:
+                try:
+                    fallbacks["together"] = TogetherAIProvider(together_key, "meta-llama/Llama-2-7b-chat-hf")
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Together AI fallback: {e}")
+        
+        if self.provider_name != "fireworks":
+            fireworks_key = os.getenv("FIREWORKS_API_KEY")
+            if fireworks_key:
+                try:
+                    fallbacks["fireworks"] = FireworksProvider(fireworks_key, "accounts/fireworks/models/llama-v2-7b-chat")
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Fireworks AI fallback: {e}")
+        
+        if self.provider_name != "groq":
+            groq_key = os.getenv("GROQ_API_KEY")
+            if groq_key and groq_key != "your_actual_groq_api_key_here":
+                try:
+                    fallbacks["groq"] = GroqProvider(groq_key, "llama3-8b-8192")
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Groq fallback: {e}")
+        
+        return fallbacks
     
     def create_reasoning_prompt(self, query: str, relevant_chunks: List[Dict]) -> str:
         """Create a structured prompt for document reasoning"""
