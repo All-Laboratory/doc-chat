@@ -3,6 +3,7 @@ import json
 import logging
 import requests
 import time
+import random
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -271,6 +272,36 @@ Analyze the provided document sections and answer the user's query. You must res
         
         return prompt
     
+    def _make_request_with_backoff(self, provider: LLMProvider, prompt: str, max_retries: int = 3) -> Optional[str]:
+        """Make request with exponential backoff for rate limiting"""
+        for attempt in range(max_retries):
+            try:
+                # Add exponential backoff delay
+                if attempt > 0:
+                    delay = (2 ** attempt) + random.uniform(0, 1)  # 2s, 4s, 8s + jitter
+                    logger.info(f"⏳ Attempt {attempt + 1}/{max_retries} - waiting {delay:.1f}s before retry...")
+                    time.sleep(delay)
+                
+                return provider.generate_response(
+                    prompt,
+                    max_tokens=2000,
+                    temperature=0.2
+                )
+                
+            except Exception as e:
+                error_msg = str(e)
+                is_rate_limit = "429" in error_msg or "rate limit" in error_msg.lower()
+                
+                if is_rate_limit and attempt < max_retries - 1:
+                    logger.warning(f"🚦 {provider.provider_name} rate limited on attempt {attempt + 1}, retrying...")
+                    continue
+                else:
+                    # Last attempt or non-rate-limit error
+                    logger.error(f"❌ {provider.provider_name} failed on attempt {attempt + 1}: {error_msg}")
+                    raise
+        
+        return None
+    
     def analyze_document_query(self, query: str, relevant_chunks: List[Dict]) -> Dict[str, Any]:
         """Analyze query using Groq first, Together AI only as fallback"""
         
@@ -286,91 +317,86 @@ Analyze the provided document sections and answer the user's query. You must res
         prompt = self.create_reasoning_prompt(query, relevant_chunks)
         logger.info(f"📝 Processing query: {query[:100]}...")
         
-        # Always try Groq first if available
-        if self.groq_provider:
+        # Always try Groq first if available and not rate limited
+        if self.groq_provider and not self.groq_provider.is_rate_limited():
             try:
                 logger.info(f"🚀 Trying Groq (primary)...")
                 
-                # Small delay if provider was recently rate limited
-                if self.groq_provider.last_rate_limit_time and time.time() - self.groq_provider.last_rate_limit_time < 5:
-                    logger.info(f"⏳ Adding small delay for Groq recovery...")
-                    time.sleep(1)
+                raw_response = self._make_request_with_backoff(self.groq_provider, prompt)
                 
-                raw_response = self.groq_provider.generate_response(
-                    prompt,
-                    max_tokens=2000,
-                    temperature=0.2  # Lower temperature for consistent JSON
-                )
-                
-                logger.info(f"✅ Response received from Groq: {raw_response[:100]}...")
-                
-                # Parse and validate JSON response
-                try:
-                    cleaned_response = self._clean_json_response(raw_response)
-                    response_data = json.loads(cleaned_response)
+                if raw_response:
+                    logger.info(f"✅ Response received from Groq: {raw_response[:100]}...")
                     
-                    if self._validate_response_structure(response_data):
-                        logger.info(f"🎯 Successfully processed with Groq (primary)")
-                        return response_data
-                    else:
-                        logger.warning(f"❌ Invalid response structure from Groq, trying fallback...")
+                    # Parse and validate JSON response
+                    try:
+                        cleaned_response = self._clean_json_response(raw_response)
+                        response_data = json.loads(cleaned_response)
                         
-                except json.JSONDecodeError as e:
-                    logger.error(f"❌ JSON parsing failed for Groq: {str(e)}, trying fallback...")
+                        if self._validate_response_structure(response_data):
+                            logger.info(f"🎯 Successfully processed with Groq (primary)")
+                            return response_data
+                        else:
+                            logger.warning(f"❌ Invalid response structure from Groq, trying fallback...")
+                            
+                    except json.JSONDecodeError as e:
+                        logger.error(f"❌ JSON parsing failed for Groq: {str(e)}, trying fallback...")
                 
             except Exception as e:
                 error_msg = str(e)
-                logger.error(f"❌ Groq failed: {error_msg}")
+                logger.error(f"❌ Groq failed after retries: {error_msg}")
                 
                 # Log rate limit specifically
                 if "429" in error_msg or "rate limit" in error_msg.lower():
-                    logger.warning(f"🚦 Groq hit rate limit, trying Together AI fallback...")
+                    logger.warning(f"🚦 Groq hit persistent rate limit, trying Together AI fallback...")
                 else:
                     logger.warning(f"⚠️ Groq error, trying Together AI fallback...")
+        elif self.groq_provider and self.groq_provider.is_rate_limited():
+            time_remaining = 60 - (time.time() - self.groq_provider.last_rate_limit_time)
+            logger.info(f"⏰ Groq still rate limited ({time_remaining:.0f}s remaining), skipping to Together AI...")
         
         # Fallback to Together AI only if Groq failed or is not available
-        if self.together_provider:
+        if self.together_provider and not self.together_provider.is_rate_limited():
             try:
                 logger.info(f"🔄 Falling back to Together AI...")
                 
-                # Small delay if provider was recently rate limited
-                if self.together_provider.last_rate_limit_time and time.time() - self.together_provider.last_rate_limit_time < 5:
-                    logger.info(f"⏳ Adding small delay for Together AI recovery...")
-                    time.sleep(1)
+                raw_response = self._make_request_with_backoff(self.together_provider, prompt)
                 
-                raw_response = self.together_provider.generate_response(
-                    prompt,
-                    max_tokens=2000,
-                    temperature=0.2  # Lower temperature for consistent JSON
-                )
-                
-                logger.info(f"✅ Response received from Together AI: {raw_response[:100]}...")
-                
-                # Parse and validate JSON response
-                try:
-                    cleaned_response = self._clean_json_response(raw_response)
-                    response_data = json.loads(cleaned_response)
+                if raw_response:
+                    logger.info(f"✅ Response received from Together AI: {raw_response[:100]}...")
                     
-                    if self._validate_response_structure(response_data):
-                        logger.info(f"🎯 Successfully processed with Together AI (fallback)")
-                        return response_data
-                    else:
-                        logger.warning(f"❌ Invalid response structure from Together AI")
+                    # Parse and validate JSON response
+                    try:
+                        cleaned_response = self._clean_json_response(raw_response)
+                        response_data = json.loads(cleaned_response)
                         
-                except json.JSONDecodeError as e:
-                    logger.error(f"❌ JSON parsing failed for Together AI: {str(e)}")
+                        if self._validate_response_structure(response_data):
+                            logger.info(f"🎯 Successfully processed with Together AI (fallback)")
+                            return response_data
+                        else:
+                            logger.warning(f"❌ Invalid response structure from Together AI")
+                            
+                    except json.JSONDecodeError as e:
+                        logger.error(f"❌ JSON parsing failed for Together AI: {str(e)}")
                 
             except Exception as e:
                 error_msg = str(e)
-                logger.error(f"❌ Together AI failed: {error_msg}")
+                logger.error(f"❌ Together AI failed after retries: {error_msg}")
                 
                 # Log rate limit specifically
                 if "429" in error_msg or "rate limit" in error_msg.lower():
-                    logger.warning(f"🚦 Together AI also hit rate limit")
+                    logger.warning(f"🚦 Together AI also hit persistent rate limit")
+        elif self.together_provider and self.together_provider.is_rate_limited():
+            time_remaining = 60 - (time.time() - self.together_provider.last_rate_limit_time)
+            logger.info(f"⏰ Together AI still rate limited ({time_remaining:.0f}s remaining)...")
         
-        # Both providers failed
-        logger.error("🚨 Both Groq and Together AI failed")
-        return self._create_enhanced_error_response("Both providers failed", query, relevant_chunks)
+        # Both providers failed or are rate limited
+        if (self.groq_provider and self.groq_provider.is_rate_limited() and 
+            self.together_provider and self.together_provider.is_rate_limited()):
+            logger.error("🚨 Both Groq and Together AI are rate limited")
+            return self._create_enhanced_error_response("Both providers are rate limited", query, relevant_chunks)
+        else:
+            logger.error("🚨 Both Groq and Together AI failed after retries")
+            return self._create_enhanced_error_response("Both providers failed after retries", query, relevant_chunks)
     
     def _clean_json_response(self, response: str) -> str:
         """Clean LLM response to extract valid JSON"""
