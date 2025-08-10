@@ -1,3 +1,5 @@
+import fitz
+import docx
 import os
 import logging
 import requests
@@ -8,50 +10,114 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DocumentExtractor:
-    """Extract text from various document formats - MINIMAL VERSION"""
+    """Extract text from various document formats"""
     
     def __init__(self):
-        # Only support text files in minimal mode
-        self.supported_formats = {".txt"}
-        logger.warning("🚨 MINIMAL MODE: Only .txt files supported. PDF/DOCX support disabled to reduce image size.")
+        self.supported_formats = {".pdf", ".docx", ".txt"}
     
     def detect_file_type_from_url(self, url: str) -> str:
-        """Detect file type from URL - always returns .txt in minimal mode"""
-        logger.warning("🚨 MINIMAL MODE: All documents will be treated as plain text")
-        return ".txt"
+        """Detect file type from URL"""
+        parsed_url = urlparse(url)
+        path = parsed_url.path.lower()
+        
+        if "pdf" in path or "pdf" in url.lower():
+            return ".pdf"
+        elif "docx" in path or "word" in path:
+            return ".docx"
+        elif "doc" in path:
+            return ".docx"  # Treat as docx for processing
+        else:
+            return ".pdf"  # Default to PDF
     
     def extract_text(self, file_path: str) -> Dict[str, any]:
-        """Extract text from document - only supports .txt in minimal mode"""
+        """Extract text from document based on file extension"""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         
-        # In minimal mode, try to read any file as plain text
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext not in self.supported_formats:
+            raise ValueError(f"Unsupported file format: {file_ext}")
+        
         try:
-            return self._extract_txt(file_path)
+            if file_ext == ".pdf":
+                return self._extract_pdf(file_path)
+            elif file_ext == ".docx":
+                return self._extract_docx(file_path)
+            elif file_ext == ".txt":
+                return self._extract_txt(file_path)
         except Exception as e:
-            # If file is binary (PDF/DOCX), return error message
-            logger.error(f"Cannot process binary file in minimal mode: {str(e)}")
-            raise ValueError(
-                "🚨 MINIMAL MODE: Cannot process PDF/DOCX files. "
-                "This deployment uses minimal dependencies for size optimization. "
-                "Only plain text files are supported. "
-                "Please provide documents as .txt files or upgrade to full deployment."
-            )
+            logger.error(f"Error extracting text from {file_path}: {str(e)}")
+            raise
+    
+    def _extract_pdf(self, file_path: str) -> Dict[str, any]:
+        """Extract text from PDF using PyMuPDF"""
+        doc = fitz.open(file_path)
+        text_content = []
+        metadata = {
+            "total_pages": len(doc),
+            "title": doc.metadata.get("title", ""),
+            "author": doc.metadata.get("author", ""),
+            "file_type": "pdf"
+        }
+        
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            page_text = page.get_text()
+            
+            if page_text.strip():  # Only add non-empty pages
+                text_content.append({
+                    "page_number": page_num + 1,
+                    "text": page_text
+                })
+        
+        doc.close()
+        
+        # Combine all text
+        full_text = "\n\n".join([page["text"] for page in text_content])
+        
+        return {
+            "text": full_text,
+            "pages": text_content,
+            "metadata": metadata
+        }
+    
+    def _extract_docx(self, file_path: str) -> Dict[str, any]:
+        """Extract text from DOCX using python-docx"""
+        doc = docx.Document(file_path)
+        
+        paragraphs = []
+        full_text_parts = []
+        
+        for i, paragraph in enumerate(doc.paragraphs):
+            if paragraph.text.strip():
+                paragraphs.append({
+                    "paragraph_number": i + 1,
+                    "text": paragraph.text
+                })
+                full_text_parts.append(paragraph.text)
+        
+        full_text = "\n\n".join(full_text_parts)
+        
+        # Extract basic metadata
+        core_props = doc.core_properties
+        metadata = {
+            "title": core_props.title or "",
+            "author": core_props.author or "",
+            "total_paragraphs": len(paragraphs),
+            "file_type": "docx"
+        }
+        
+        return {
+            "text": full_text,
+            "paragraphs": paragraphs,
+            "metadata": metadata
+        }
     
     def _extract_txt(self, file_path: str) -> Dict[str, any]:
         """Extract text from plain text file"""
-        try:
-            # Try UTF-8 first
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-        except UnicodeDecodeError:
-            try:
-                # Fallback to latin-1 for binary files
-                with open(file_path, 'r', encoding='latin-1') as file:
-                    content = file.read()
-                logger.warning("File read using latin-1 encoding - may not be optimal for text extraction")
-            except Exception as e:
-                raise ValueError(f"Cannot read file as text: {str(e)}")
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
         
         lines = content.split('\n')
         non_empty_lines = [line for line in lines if line.strip()]
@@ -59,8 +125,7 @@ class DocumentExtractor:
         metadata = {
             "total_lines": len(lines),
             "non_empty_lines": len(non_empty_lines),
-            "file_type": "txt",
-            "mode": "minimal"
+            "file_type": "txt"
         }
         
         return {

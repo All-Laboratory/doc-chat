@@ -2,7 +2,6 @@ import os
 import json
 import logging
 import requests
-import time
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -25,20 +24,14 @@ class TogetherAIProvider(LLMProvider):
     
     def __init__(self, api_key: str, model_name: str):
         super().__init__(api_key, model_name)
-        # Use chat endpoint for better model compatibility
-        self.base_url = "https://api.together.xyz/v1/chat/completions"
-        self.is_chat_model = self._is_chat_model(model_name)
-    
-    def _is_chat_model(self, model_name: str) -> bool:
-        """Check if model requires chat format"""
-        chat_models = [
-            "moonshotai/kimi",
-            "meta-llama/Llama-2",
-            "meta-llama/Llama-3",
-            "mistralai/",
-            "NousResearch/"
-        ]
-        return any(chat_model in model_name for chat_model in chat_models)
+        # Support both old inference and new chat endpoints
+        # Modern models (Kimi, Llama-3, DeepSeek-R1) use chat endpoint
+        if any(model in model_name.lower() for model in ["kimi", "llama-3", "deepseek-r1", "deepseek"]):
+            self.base_url = "https://api.together.xyz/v1/chat/completions"
+            self.is_chat_model = True
+        else:
+            self.base_url = "https://api.together.xyz/inference"
+            self.is_chat_model = False
     
     def generate_response(self, prompt: str, max_tokens: int = 2000, temperature: float = 0.3) -> str:
         headers = {
@@ -75,11 +68,9 @@ class TogetherAIProvider(LLMProvider):
             result = response.json()
             
             if self.is_chat_model:
-                # Chat format response
                 return result["choices"][0]["message"]["content"].strip()
             else:
-                # Completion format response
-                return result["choices"][0]["text"].strip()
+                return result["output"]["choices"][0]["text"].strip()
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Together AI API request failed: {str(e)}")
@@ -89,7 +80,7 @@ class TogetherAIProvider(LLMProvider):
             raise
 
 class GroqProvider(LLMProvider):
-    """Groq provider for fast inference with retry logic"""
+    """Groq provider for fast inference"""
     
     def __init__(self, api_key: str, model_name: str = "llama3-70b-8192"):
         super().__init__(api_key, model_name)
@@ -110,41 +101,19 @@ class GroqProvider(LLMProvider):
             "temperature": temperature
         }
         
-        # Enhanced retry logic for rate limiting - improved backoff
-        max_retries = 5  # Increased retries for rate limit handling
-        base_delay = 1  # Start with 1 second delay
-        
-        for attempt in range(max_retries + 1):
-            try:
-                response = requests.post(self.base_url, headers=headers, json=payload, timeout=20)  # Increased timeout
-                response.raise_for_status()
-                
-                result = response.json()
-                return result["choices"][0]["message"]["content"].strip()
-                
-            except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429:  # Too Many Requests
-                    if attempt < max_retries:
-                        # Exponential backoff: 1s, 2s, 4s
-                        delay = base_delay * (2 ** attempt)
-                        logger.warning(f"Rate limit hit. Retrying in {delay} seconds... (attempt {attempt + 1}/{max_retries + 1})")
-                        time.sleep(delay)
-                        continue
-                    else:
-                        logger.error("Max retries reached for rate limit. Failing.")
-                        raise
-                else:
-                    logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
-                    raise
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Groq API request failed: {str(e)}")
-                raise
-            except KeyError as e:
-                logger.error(f"Unexpected Groq response format: {str(e)}")
-                raise
-        
-        # This should never be reached, but just in case
-        raise Exception("All retry attempts failed")
+        try:
+            response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            
+            result = response.json()
+            return result["choices"][0]["message"]["content"].strip()
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Groq API request failed: {str(e)}")
+            raise
+        except KeyError as e:
+            logger.error(f"Unexpected Groq response format: {str(e)}")
+            raise
 
 class FireworksProvider(LLMProvider):
     """Fireworks AI provider"""
@@ -184,9 +153,8 @@ class DocumentReasoningLLM:
     """Main LLM class for document reasoning tasks with fallback support"""
     
     def __init__(self):
-        self.provider_name = os.getenv("LLM_PROVIDER", "groq").lower()
-        # Use faster, smaller model for quick responses
-        self.model_name = os.getenv("MODEL_NAME", "llama3-8b-8192")
+        self.provider_name = os.getenv("LLM_PROVIDER", "together").lower()
+        self.model_name = os.getenv("MODEL_NAME", "moonshotai/kimi-k2-instruct")
         self.provider = self._initialize_provider()
         self.fallback_providers = self._get_fallback_providers()
         
@@ -222,22 +190,6 @@ class DocumentReasoningLLM:
         fallbacks = {}
         
         # Try to initialize fallback providers
-        if self.provider_name != "together":
-            together_key = os.getenv("TOGETHER_API_KEY")
-            if together_key:
-                try:
-                    fallbacks["together"] = TogetherAIProvider(together_key, "meta-llama/Llama-2-7b-chat-hf")
-                except Exception as e:
-                    logger.debug(f"Failed to initialize Together AI fallback: {e}")
-        
-        if self.provider_name != "fireworks":
-            fireworks_key = os.getenv("FIREWORKS_API_KEY")
-            if fireworks_key:
-                try:
-                    fallbacks["fireworks"] = FireworksProvider(fireworks_key, "accounts/fireworks/models/llama-v2-7b-chat")
-                except Exception as e:
-                    logger.debug(f"Failed to initialize Fireworks AI fallback: {e}")
-        
         if self.provider_name != "groq":
             groq_key = os.getenv("GROQ_API_KEY")
             if groq_key and groq_key != "your_actual_groq_api_key_here":
@@ -246,16 +198,32 @@ class DocumentReasoningLLM:
                 except Exception as e:
                     logger.debug(f"Failed to initialize Groq fallback: {e}")
         
+        if self.provider_name != "together":
+            together_key = os.getenv("TOGETHER_API_KEY")
+            if together_key and together_key != "your_together_api_key":
+                try:
+                    fallbacks["together"] = TogetherAIProvider(together_key, "Qwen/Qwen1.5-14B-Chat")
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Together AI fallback: {e}")
+        
+        if self.provider_name != "fireworks":
+            fireworks_key = os.getenv("FIREWORKS_API_KEY")
+            if fireworks_key and fireworks_key != "your_fireworks_api_key":
+                try:
+                    fallbacks["fireworks"] = FireworksProvider(fireworks_key, "accounts/fireworks/models/llama-v2-7b-chat")
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Fireworks AI fallback: {e}")
+        
         return fallbacks
     
     def create_reasoning_prompt(self, query: str, relevant_chunks: List[Dict]) -> str:
         """Create a structured prompt for document reasoning"""
         
-        # Format relevant chunks - optimized for speed
+        # Format relevant chunks
         context_sections = []
-        for i, chunk in enumerate(relevant_chunks[:3], 1):  # Limit to top 3 for faster processing
+        for i, chunk in enumerate(relevant_chunks[:5], 1):  # Limit to top 5
             clause_id = chunk.get("clause_id", f"Section {i}")
-            text = chunk["text"][:800]  # Reduced context length for faster processing
+            text = chunk["text"][:1000]  # Truncate if too long
             
             context_sections.append(f"""### {clause_id}
 {text}
@@ -308,7 +276,7 @@ Analyze the provided document sections and answer the user's query. You must res
         return prompt
     
     def analyze_document_query(self, query: str, relevant_chunks: List[Dict]) -> Dict[str, Any]:
-        """Analyze query against document chunks and return structured response"""
+        """Analyze query against document chunks and return structured response with fallback support"""
         
         if not relevant_chunks:
             return {
@@ -324,37 +292,58 @@ Analyze the provided document sections and answer the user's query. You must res
         
         logger.info(f"Sending query to LLM: {query[:100]}...")
         
-        try:
-            # Get response from LLM with optimized settings for speed
-            raw_response = self.provider.generate_response(
-                prompt,
-                max_tokens=1500,  # Reduced tokens for faster generation
-                temperature=0.1   # Lower temperature for faster, more deterministic output
-            )
-            
-            logger.info(f"Received LLM response: {raw_response[:200]}...")
-            
-            # Try to parse JSON response
-            try:
-                # Clean the response - remove any markdown formatting
-                cleaned_response = self._clean_json_response(raw_response)
-                response_data = json.loads(cleaned_response)
-                
-                # Validate response structure
-                if self._validate_response_structure(response_data):
-                    return response_data
-                else:
-                    logger.warning("Invalid response structure from LLM")
-                    return self._create_fallback_response(query, relevant_chunks)
-                    
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM JSON response: {str(e)}")
-                logger.error(f"Raw response: {raw_response}")
-                return self._create_fallback_response(query, relevant_chunks, raw_response)
+        # Try primary provider first, then fallbacks
+        providers_to_try = [(self.provider_name, self.provider)] + list(self.fallback_providers.items())
         
-        except Exception as e:
-            logger.error(f"LLM API call failed: {str(e)}")
-            return self._create_error_response(str(e))
+        for provider_name, provider in providers_to_try:
+            try:
+                logger.info(f"Trying {provider_name} provider...")
+                
+                # Get response from LLM
+                raw_response = provider.generate_response(
+                    prompt,
+                    max_tokens=2000,
+                    temperature=0.2  # Lower temperature for more consistent JSON output
+                )
+                
+                logger.info(f"Received response from {provider_name}: {raw_response[:200]}...")
+                
+                # Try to parse JSON response
+                try:
+                    # Clean the response - remove any markdown formatting
+                    cleaned_response = self._clean_json_response(raw_response)
+                    response_data = json.loads(cleaned_response)
+                    
+                    # Validate response structure
+                    if self._validate_response_structure(response_data):
+                        if provider_name != self.provider_name:
+                            logger.info(f"✅ Successfully used fallback provider: {provider_name}")
+                        return response_data
+                    else:
+                        logger.warning(f"Invalid response structure from {provider_name}")
+                        continue
+                        
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON response from {provider_name}: {str(e)}")
+                    logger.error(f"Raw response: {raw_response}")
+                    # Try next provider instead of creating fallback response immediately
+                    continue
+            
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"{provider_name} provider failed: {error_msg}")
+                
+                # If it's a rate limit error and we have more providers to try, continue
+                if ("429" in error_msg or "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower()) and provider_name != providers_to_try[-1][0]:
+                    logger.warning(f"Rate limit hit for {provider_name}, trying next provider...")
+                    continue
+                
+                # If this is the last provider, create error response
+                if provider_name == providers_to_try[-1][0]:
+                    return self._create_enhanced_error_response(error_msg, query, relevant_chunks)
+        
+        # If we get here, all providers failed with non-rate-limit errors
+        return self._create_fallback_response(query, relevant_chunks, "All providers failed")
     
     def _clean_json_response(self, response: str) -> str:
         """Clean LLM response to extract valid JSON"""
@@ -430,16 +419,39 @@ Analyze the provided document sections and answer the user's query. You must res
     
     def _create_error_response(self, error_message: str) -> Dict[str, Any]:
         """Create error response when LLM is completely unavailable"""
-        # Provide specific guidance for rate limit errors
-        if "429" in error_message or "Too Many Requests" in error_message:
-            additional_info = "The AI service is currently experiencing high demand. Please wait a moment and try again. Rate limits typically reset within 1-2 minutes."
-        else:
-            additional_info = "Please try again later or contact support if the issue persists."
-            
         return {
-            "direct_answer": "I'm temporarily unable to process your question due to high demand on the AI service.",
+            "direct_answer": "I'm unable to process your question due to a system error.",
             "decision": "Uncertain",
-            "justification": f"Unable to process query: {error_message}",
+            "justification": f"Unable to process query due to system error: {error_message}",
             "referenced_clauses": [],
+            "additional_info": "Please try again later or contact support if the issue persists."
+        }
+    
+    def _create_enhanced_error_response(self, error_message: str, query: str, chunks: List[Dict]) -> Dict[str, Any]:
+        """Create enhanced error response that includes document content when possible"""
+        referenced_clauses = []
+        
+        # Still try to show document content even when AI fails
+        for chunk in chunks[:3]:  # Take top 3 chunks
+            clause = {
+                "clause_id": chunk.get("clause_id", chunk.get("chunk_id", "Unknown")),
+                "text": chunk["text"][:300] + "..." if len(chunk["text"]) > 300 else chunk["text"],
+                "reasoning": f"Relevant content with similarity score: {chunk.get('similarity_score', 0):.3f}"
+            }
+            referenced_clauses.append(clause)
+        
+        # Provide specific guidance based on error type
+        if "429" in error_message or "rate limit" in error_message.lower() or "too many requests" in error_message.lower():
+            direct_answer = "AI service temporarily overloaded - here's what I found in your document"
+            additional_info = "The AI service is experiencing high demand. The relevant document sections are shown above. Please try again in a moment."
+        else:
+            direct_answer = "System error occurred - here's what I found in your document"
+            additional_info = "A technical error occurred, but I've extracted the most relevant sections from your document above."
+        
+        return {
+            "direct_answer": direct_answer if referenced_clauses else "I'm unable to process your question due to a system error.",
+            "decision": "Uncertain",
+            "justification": f"System error prevented full analysis: {error_message}. However, relevant document sections have been identified.",
+            "referenced_clauses": referenced_clauses,
             "additional_info": additional_info
         }
