@@ -15,11 +15,11 @@ import uuid
 # Import our modules
 try:
     from app.file_utils import DocumentExtractor
-    from app.llm_utils_round_robin import DocumentReasoningLLM
+    from app.llm_utils_groq_first import DocumentReasoningLLM
     from app.db import db
 except ImportError:
     from file_utils import DocumentExtractor
-    from llm_utils_round_robin import DocumentReasoningLLM
+    from llm_utils_groq_first import DocumentReasoningLLM
     from db import db
 
 try:
@@ -251,6 +251,7 @@ async def root():
             "environment": "/env",
             "test": "/test",
             "stats": "/stats",
+            "provider_status": "/provider-status",
             "docs": "/docs"
         }
     }
@@ -555,6 +556,22 @@ async def environment_info():
         "cloud_retriever_available": CLOUD_RETRIEVER_AVAILABLE,
         "mode": "minimal" if not CLOUD_RETRIEVER_AVAILABLE else "full"
     }
+
+@app.get("/provider-status")
+async def get_provider_status():
+    """Get current status of LLM providers"""
+    if not llm_engine:
+        raise HTTPException(status_code=500, detail="LLM engine not initialized")
+    
+    try:
+        provider_status = llm_engine.get_provider_status()
+        return {
+            "timestamp": time.time(),
+            "strategy": "Groq-first with Together AI fallback",
+            "providers": provider_status
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get provider status: {str(e)}")
 
 @app.get("/test")
 async def test_system():
