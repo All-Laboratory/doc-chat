@@ -301,7 +301,7 @@ Respond with a valid JSON object in exactly this format:
 - **Denied**: The document explicitly prohibits or excludes the request/claim
 - **Uncertain**: The document is ambiguous or lacks specific details
 
-Return ONLY the JSON object, no additional text."""
+Return ONLY the JSON object, no additional text, no markdown formatting, no explanations."""
     
     def _clean_json_response(self, response: str) -> str:
         """Clean LLM response to extract valid JSON"""

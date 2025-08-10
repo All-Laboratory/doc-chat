@@ -15,11 +15,11 @@ import uuid
 # Import our modules
 try:
     from app.file_utils import DocumentExtractor
-    from app.llm_utils_no_retry import DocumentReasoningLLM
+    from app.llm_utils_groq_only import DocumentReasoningLLM
     from app.db import db
 except ImportError:
     from file_utils import DocumentExtractor
-    from llm_utils_no_retry import DocumentReasoningLLM
+    from llm_utils_groq_only import DocumentReasoningLLM
     from db import db
 
 try:
@@ -210,11 +210,17 @@ async def hackathon_process(request: HackathonRequest, req: Request):
                 logger.info(f"Found {len(relevant_chunks)} relevant chunks for question")
                 llm_response = llm_engine.analyze_document_query(question, relevant_chunks)
                 
-                # Extract answer with fallback
+                # Extract direct answer from LLM response
                 if isinstance(llm_response, dict) and "direct_answer" in llm_response:
                     answer = llm_response["direct_answer"]
+                    logger.info(f"✅ Extracted answer: {answer[:100]}...")
+                elif isinstance(llm_response, dict):
+                    # Try to extract any useful response
+                    answer = llm_response.get("justification", str(llm_response))
+                    logger.warning("⚠️ No direct_answer field, using justification")
                 else:
                     answer = str(llm_response) if llm_response else "Could not generate response."
+                    logger.warning("⚠️ Unexpected response format")
             else:
                 logger.warning(f"No relevant chunks found for question: {question}")
                 answer = "No relevant information found in the document."
