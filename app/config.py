@@ -74,9 +74,9 @@ class ChunkingConfig:
     """Document chunking configuration"""
     
     def __init__(self):
-        self.chunk_size: int = int(os.getenv("CHUNK_SIZE", "1000"))
-        self.chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "200"))
-        self.top_k_results: int = int(os.getenv("TOP_K_RESULTS", "5"))
+        self.chunk_size: int = int(os.getenv("CHUNK_SIZE", "800"))  # Smaller chunks for faster processing
+        self.chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "100"))  # Reduced overlap
+        self.top_k_results: int = int(os.getenv("TOP_K_RESULTS", "3"))  # Fewer results for speed
     
     def validate(self) -> bool:
         """Validate chunking configuration"""

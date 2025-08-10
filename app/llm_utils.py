@@ -78,13 +78,13 @@ class GroqProvider(LLMProvider):
             "temperature": temperature
         }
         
-        # Enhanced retry logic for rate limiting
-        max_retries = 5
-        base_delay = 2  # Start with 2 second delay
+        # Enhanced retry logic for rate limiting - optimized for speed
+        max_retries = 3  # Reduced retries for faster responses
+        base_delay = 1  # Start with 1 second delay
         
         for attempt in range(max_retries + 1):
             try:
-                response = requests.post(self.base_url, headers=headers, json=payload, timeout=30)
+                response = requests.post(self.base_url, headers=headers, json=payload, timeout=15)  # Reduced timeout
                 response.raise_for_status()
                 
                 result = response.json()
@@ -153,7 +153,8 @@ class DocumentReasoningLLM:
     
     def __init__(self):
         self.provider_name = os.getenv("LLM_PROVIDER", "groq").lower()
-        self.model_name = os.getenv("MODEL_NAME", "meta-llama/llama-4-maverick-17b-128e-instruct")
+        # Use faster, smaller model for quick responses
+        self.model_name = os.getenv("MODEL_NAME", "llama3-8b-8192")
         self.provider = self._initialize_provider()
         
         logger.info(f"Initialized LLM with provider: {self.provider_name}, model: {self.model_name}")
@@ -184,11 +185,11 @@ class DocumentReasoningLLM:
     def create_reasoning_prompt(self, query: str, relevant_chunks: List[Dict]) -> str:
         """Create a structured prompt for document reasoning"""
         
-        # Format relevant chunks
+        # Format relevant chunks - optimized for speed
         context_sections = []
-        for i, chunk in enumerate(relevant_chunks[:5], 1):  # Limit to top 5
+        for i, chunk in enumerate(relevant_chunks[:3], 1):  # Limit to top 3 for faster processing
             clause_id = chunk.get("clause_id", f"Section {i}")
-            text = chunk["text"][:1000]  # Truncate if too long
+            text = chunk["text"][:800]  # Reduced context length for faster processing
             
             context_sections.append(f"""### {clause_id}
 {text}
@@ -258,11 +259,11 @@ Analyze the provided document sections and answer the user's query. You must res
         logger.info(f"Sending query to LLM: {query[:100]}...")
         
         try:
-            # Get response from LLM
+            # Get response from LLM with optimized settings for speed
             raw_response = self.provider.generate_response(
                 prompt,
-                max_tokens=2000,
-                temperature=0.2  # Lower temperature for more consistent JSON output
+                max_tokens=1500,  # Reduced tokens for faster generation
+                temperature=0.1   # Lower temperature for faster, more deterministic output
             )
             
             logger.info(f"Received LLM response: {raw_response[:200]}...")
