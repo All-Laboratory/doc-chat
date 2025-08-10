@@ -1,0 +1,28 @@
+Test Document for Round-Robin LLM Implementation
+
+This is a simple test document created to verify that the round-robin LLM system is working correctly.
+
+The document contains the following information:
+- Company Name: TechCorp Inc.
+- Product: Advanced AI Assistant
+- Version: 2.0
+- Release Date: August 2025
+- Key Features:
+  - Natural language processing
+  - Document analysis capabilities
+  - Multi-provider LLM support
+  - Rate limiting protection
+  - Automatic failover between providers
+
+Technical Specifications:
+- Supported file formats: PDF, DOCX, TXT
+- Maximum file size: 10MB
+- Processing time: Under 5 seconds
+- API rate limit: 100 requests per minute
+
+Contact Information:
+- Email: support@techcorp.com
+- Phone: +1-555-0123
+- Website: www.techcorp.com
+
+This document is designed to test the round-robin functionality where requests should alternate between Groq and Together AI providers in the sequence: Groq → Together → Groq → Together.
