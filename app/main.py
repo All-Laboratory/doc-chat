@@ -200,10 +200,15 @@ async def hackathon_process(request: HackathonRequest, req: Request):
 
     # Answer questions with improved error handling and timeout management
     answers = []
-    for question in request.questions:
+    for i, question in enumerate(request.questions):
         try:
+            # Add 5-second delay between questions (except for the first one)
+            if i > 0:
+                logger.info(f"⏳ Waiting 5 seconds before processing next question to avoid rate limiting...")
+                time.sleep(5)
+            
             # Use the same document_id for retrieval that was used for processing
-            logger.info(f"Processing question: {question[:50]}...")
+            logger.info(f"Processing question {i+1}/{len(request.questions)}: {question[:50]}...")
             relevant_chunks = document_retriever.query(question, document_id=document_id)
             
             if relevant_chunks:
@@ -230,7 +235,7 @@ async def hackathon_process(request: HackathonRequest, req: Request):
             answer = f"Error processing question: {str(e)[:100]}..."
             
         answers.append(answer)
-        logger.info(f"Answer generated: {answer[:100]}...")
+        logger.info(f"Answer {i+1} generated: {answer[:100]}...")
 
     logger.info(f"All {len(answers)} questions processed successfully")
     return HackathonResponse(answers=answers)
