@@ -1,28 +1,30 @@
-# Emergency ultra-minimal - absolute smallest possible deployment
-# Use this if image size still exceeds 4GB
+# Railway deployment with PDF/DOCX support
+# Optimized for Railway's build limits while enabling document processing
 
-# Core web framework only
+# Core web framework
 fastapi==0.104.1
 uvicorn==0.24.0
 python-dotenv==1.0.0
 
-# Absolutely essential for file uploads
+# File upload support
 python-multipart==0.0.6
 
-# Basic HTTP client
+# HTTP client for API calls
 requests==2.31.0
 
 # System monitoring for health checks
 psutil==5.9.6
 
+# Document processing (essential for PDF/DOCX support)
+pymupdf==1.23.0
+python-docx==1.0.1
+
 # LLM API (essential)
 groq==0.4.1
 
-# Everything else disabled for emergency deployment:
-# pymupdf - document processing (adds ~20MB)
-# python-docx - document processing (adds ~5MB)  
-# psycopg2-binary - database (adds ~15MB)
-# numpy - math operations (adds ~30MB)
-# pinecone-client - vector database (adds ~50MB)
+# Optional (uncomment if needed):
+# psycopg2-binary==2.9.9  # Database support (adds ~15MB)
+# pinecone-client==2.2.4   # Vector database (adds ~50MB)
 
-# Total estimated size with this config: <200MB of Python packages
+# Total estimated size: ~250MB of Python packages
+# Should fit comfortably within Railway's limits
