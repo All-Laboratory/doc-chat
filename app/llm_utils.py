@@ -153,7 +153,7 @@ class DocumentReasoningLLM:
     
     def __init__(self):
         self.provider_name = os.getenv("LLM_PROVIDER", "groq").lower()
-        self.model_name = os.getenv("MODEL_NAME", "llama3-8b-8192")
+        self.model_name = os.getenv("MODEL_NAME", "meta-llama/llama-4-maverick-17b-128e-instruct")
         self.provider = self._initialize_provider()
         
         logger.info(f"Initialized LLM with provider: {self.provider_name}, model: {self.model_name}")
