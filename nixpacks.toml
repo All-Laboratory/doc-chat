@@ -1,4 +1,6 @@
-# Simple Railway deployment with Nixpacks
+# Railway deployment - No system dependencies needed
+# Uses PyPDF2 for PDF processing (pure Python)
+
 [variables]
 PYTHON_VERSION = "3.11"
 PIP_NO_CACHE_DIR = "1"

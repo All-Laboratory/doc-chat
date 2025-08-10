@@ -1,5 +1,5 @@
-# Railway deployment with PDF/DOCX support
-# Optimized for Railway's build limits while enabling document processing
+# Railway deployment - Safe version without system dependencies
+# Uses PyPDF2 instead of PyMuPDF to avoid libcrypt.so.2 errors
 
 # Core web framework
 fastapi==0.104.1
@@ -15,16 +15,16 @@ requests==2.31.0
 # System monitoring for health checks
 psutil==5.9.6
 
-# Document processing (essential for PDF/DOCX support)
-pymupdf==1.23.0
+# Document processing - No system dependencies required
+PyPDF2==3.0.1
 python-docx==1.0.1
 
 # LLM API (essential)
 groq==0.4.1
 
 # Optional (uncomment if needed):
-# psycopg2-binary==2.9.9  # Database support (adds ~15MB)
-# pinecone-client==2.2.4   # Vector database (adds ~50MB)
+# psycopg2-binary==2.9.9  # Database support
+# pinecone-client==2.2.4   # Vector database
 
-# Total estimated size: ~250MB of Python packages
-# Should fit comfortably within Railway's limits
+# Total estimated size: ~120MB of Python packages
+# No system dependencies - Railway safe

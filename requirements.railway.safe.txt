@@ -1,0 +1,26 @@
+# Railway deployment - Safe version with PyPDF2 fallback
+# Use this if PyMuPDF causes system dependency issues
+
+# Core web framework
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
+
+# File upload support
+python-multipart==0.0.6
+
+# HTTP client for API calls
+requests==2.31.0
+
+# System monitoring for health checks
+psutil==5.9.6
+
+# Document processing - PyPDF2 version (no system dependencies)
+PyPDF2==3.0.1
+python-docx==1.0.1
+
+# LLM API (essential)
+groq==0.4.1
+
+# Total estimated size: ~120MB of Python packages
+# No system dependencies required
