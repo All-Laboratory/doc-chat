@@ -15,11 +15,11 @@ import uuid
 # Import our modules
 try:
     from app.file_utils import DocumentExtractor
-    from app.llm_utils_groq_only import DocumentReasoningLLM
+    from app.llm_utils_groq_first import DocumentReasoningLLM
     from app.db import db
 except ImportError:
     from file_utils import DocumentExtractor
-    from llm_utils_groq_only import DocumentReasoningLLM
+    from llm_utils_groq_first import DocumentReasoningLLM
     from db import db
 
 try:
