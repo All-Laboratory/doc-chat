@@ -89,92 +89,21 @@ class GroqProvider(LLMProvider):
             logger.error(f"Unexpected Groq response format: {str(e)}")
             raise
 
-class TogetherAIProvider(LLMProvider):
-    """Together AI provider - Powerful models"""
-    
-    def __init__(self, api_key: str, model_name: str):
-        super().__init__(api_key, model_name, "Together AI")
-        # Support both old inference and new chat endpoints
-        if any(model in model_name.lower() for model in ["kimi", "llama-3", "deepseek-r1", "deepseek"]):
-            self.base_url = "https://api.together.xyz/v1/chat/completions"
-            self.is_chat_model = True
-        else:
-            self.base_url = "https://api.together.xyz/inference"
-            self.is_chat_model = False
-    
-    def generate_response(self, prompt: str, max_tokens: int = 2000, temperature: float = 0.3) -> str:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        if self.is_chat_model:
-            payload = {
-                "model": self.model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "top_p": 0.9
-            }
-        else:
-            payload = {
-                "model": self.model_name,
-                "prompt": prompt,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "top_p": 0.9,
-                "stop": ["<|im_end|>", "<|endoftext|>"]
-            }
-        
-        try:
-            response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
-            
-            # Check for rate limiting
-            if response.status_code == 429:
-                self.mark_rate_limited()
-                raise requests.exceptions.RequestException(f"Rate limit exceeded (429) for {self.provider_name}")
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            # Mark success
-            self.mark_success()
-            
-            if self.is_chat_model:
-                return result["choices"][0]["message"]["content"].strip()
-            else:
-                return result["output"]["choices"][0]["text"].strip()
-            
-        except requests.exceptions.RequestException as e:
-            error_msg = str(e)
-            # Check if it's a rate limit error
-            if "429" in error_msg or "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower():
-                self.mark_rate_limited()
-            logger.error(f"Together AI API request failed: {error_msg}")
-            raise
-        except KeyError as e:
-            logger.error(f"Unexpected Together AI response format: {str(e)}")
-            raise
 
 class DocumentReasoningLLM:
-    """Groq-First System: 3 Groq models as primary providers, Together AI as backup"""
+    """Pure Groq System: Up to 4 Groq models with round-robin load balancing"""
     
     def __init__(self):
         self.groq_providers = self._initialize_groq_providers()
-        self.together_provider = self._initialize_together()
         
-        if not self.groq_providers and not self.together_provider:
-            raise ValueError("At least one API key (GROQ_API_KEY or TOGETHER_API_KEY) must be set")
+        if not self.groq_providers:
+            raise ValueError("At least one GROQ API key must be set (GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3, GROQ_API_KEY_4)")
         
         # Log what we have available
-        available_providers = []
-        if self.groq_providers:
-            available_providers.extend([f"Groq-{i+1}" for i in range(len(self.groq_providers))])
-        if self.together_provider:
-            available_providers.append("Together AI")
+        available_providers = [f"Groq-{i+1}" for i in range(len(self.groq_providers))]
         
-        logger.info(f"🚀 Groq-First System Initialized with providers: {' → '.join(available_providers)}")
-        logger.info(f"📋 Strategy: Try all {len(self.groq_providers)} Groq models first, then Together AI backup")
+        logger.info(f"🚀 Pure Groq System Initialized with providers: {' → '.join(available_providers)}")
+        logger.info(f"📋 Strategy: Round-robin through {len(self.groq_providers)} Groq models")
         logger.info(f"⚡ Total Groq capacity: {len(self.groq_providers) * 30} requests/minute")
         
         # Railway environment optimization
@@ -186,8 +115,8 @@ class DocumentReasoningLLM:
         """Initialize multiple Groq providers"""
         providers = []
         
-        # Try to get multiple Groq API keys
-        for i in range(1, 4):  # Support up to 3 Groq keys
+        # Try to get multiple Groq API keys (1-4)
+        for i in range(1, 5):  # Support up to 4 Groq keys
             key_name = f"GROQ_API_KEY_{i}" if i > 1 else "GROQ_API_KEY"
             key = os.getenv(key_name)
             
@@ -197,8 +126,10 @@ class DocumentReasoningLLM:
                     model = os.getenv("GROQ_MODEL_1", os.getenv("GROQ_MODEL", "llama3-8b-8192"))
                 elif i == 2:
                     model = os.getenv("GROQ_MODEL_2", "llama3-70b-8192")
-                else:
+                elif i == 3:
                     model = os.getenv("GROQ_MODEL_3", "mixtral-8x7b-32768")
+                else:
+                    model = os.getenv("GROQ_MODEL_4", "llama3-8b-8192")
                 
                 try:
                     provider = GroqProvider(key, model, f"Groq-{i}")
@@ -208,25 +139,10 @@ class DocumentReasoningLLM:
                     logger.error(f"❌ Failed to initialize Groq provider {i}: {e}")
         
         if not providers:
-            logger.warning("⚠️ No valid Groq API keys found. Set GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3")
+            logger.warning("⚠️ No valid Groq API keys found. Set GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3, GROQ_API_KEY_4")
         
         return providers
     
-    def _initialize_together(self) -> Optional[TogetherAIProvider]:
-        """Initialize Together AI provider as backup"""
-        together_key = os.getenv("TOGETHER_API_KEY")
-        if together_key and together_key not in ["your_together_api_key", "your_actual_api_key"]:
-            model = os.getenv("TOGETHER_MODEL", "deepseek-ai/DeepSeek-R1-Distill-Llama-70B")
-            try:
-                provider = TogetherAIProvider(together_key, model)
-                logger.info(f"✅ Together AI backup provider initialized with model: {model}")
-                return provider
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize Together AI: {e}")
-                return None
-        else:
-            logger.warning("⚠️ Together AI API key not found or invalid (backup only)")
-            return None
     
     def create_reasoning_prompt(self, query: str, relevant_chunks: List[Dict]) -> str:
         """Create a structured prompt for document reasoning"""
@@ -318,7 +234,7 @@ Analyze the provided document sections and answer the user's query. You must res
         return None
     
     def analyze_document_query(self, query: str, relevant_chunks: List[Dict]) -> Dict[str, Any]:
-        """Analyze query using all Groq providers first, then Together AI as backup"""
+        """Analyze query using all available Groq providers with round-robin load balancing"""
         
         if not relevant_chunks:
             return {
@@ -332,28 +248,22 @@ Analyze the provided document sections and answer the user's query. You must res
         prompt = self.create_reasoning_prompt(query, relevant_chunks)
         logger.info(f"📝 Processing query: {query[:100]}...")
         
-        # Build provider priority list: All available Groq providers first, then Together AI
+        # Build provider priority list: All available Groq providers
         provider_priority = []
         
-        # Add all available Groq providers first
+        # Add all available Groq providers
         for groq_provider in self.groq_providers:
             if not groq_provider.is_rate_limited():
                 provider_priority.append(groq_provider)
         
-        # Add Together AI as backup if available
-        if self.together_provider and not self.together_provider.is_rate_limited():
-            provider_priority.append(self.together_provider)
-        
         # If all are rate limited, try them anyway (emergency fallback)
         if not provider_priority:
-            logger.warning("⚠️ All providers are rate limited, trying emergency fallback...")
+            logger.warning("⚠️ All Groq providers are rate limited, trying emergency fallback...")
             provider_priority.extend(self.groq_providers)
-            if self.together_provider:
-                provider_priority.append(self.together_provider)
         
         if not provider_priority:
-            logger.error("❌ No providers available")
-            return self._create_enhanced_error_response("No AI providers available", query, relevant_chunks)
+            logger.error("❌ No Groq providers available")
+            return self._create_enhanced_error_response("No Groq providers available", query, relevant_chunks)
         
         last_error = None
         
@@ -381,10 +291,7 @@ Analyze the provided document sections and answer the user's query. You must res
                     response_data = json.loads(cleaned_response)
                     
                     if self._validate_response_structure(response_data):
-                        if "Together" in provider.provider_name:
-                            logger.info(f"🎯 Successfully used backup provider: {provider.provider_name}")
-                        else:
-                            logger.info(f"⚡ Successfully used Groq provider: {provider.provider_name}")
+                        logger.info(f"⚡ Successfully used Groq provider: {provider.provider_name}")
                         return response_data
                     else:
                         logger.warning(f"❌ Invalid response structure from {provider.provider_name}")
@@ -402,13 +309,13 @@ Analyze the provided document sections and answer the user's query. You must res
                 
                 # Log rate limit specifically
                 if "429" in error_msg or "rate limit" in error_msg.lower():
-                    logger.warning(f"🚦 {provider.provider_name} hit rate limit, trying next provider...")
+                    logger.warning(f"🚦 {provider.provider_name} hit rate limit, trying next Groq provider...")
                 
                 continue
         
-        # All providers failed
-        logger.error("🚨 All providers failed")
-        return self._create_enhanced_error_response(last_error or "All providers failed", query, relevant_chunks)
+        # All Groq providers failed
+        logger.error("🚨 All Groq providers failed")
+        return self._create_enhanced_error_response(last_error or "All Groq providers failed", query, relevant_chunks)
     
     def _clean_json_response(self, response: str) -> str:
         """Clean LLM response to extract valid JSON"""
@@ -477,11 +384,11 @@ Analyze the provided document sections and answer the user's query. You must res
         
         # Provide specific guidance based on error type
         if "429" in error_message or "rate limit" in error_message.lower() or "too many requests" in error_message.lower():
-            direct_answer = "🚦 Both Groq and Together AI are temporarily busy - here's what I found in your document"
-            additional_info = "Both AI providers are experiencing high demand. The relevant document sections are shown above. Please try again in a moment."
+            direct_answer = "🚦 All Groq providers are temporarily busy - here's what I found in your document"
+            additional_info = "All Groq API keys are experiencing high demand. The relevant document sections are shown above. Please try again in a moment."
         else:
             direct_answer = "⚠️ System error occurred - here's what I found in your document"
-            additional_info = "A technical error occurred with both AI providers, but I've extracted the most relevant sections from your document above."
+            additional_info = "A technical error occurred with all Groq providers, but I've extracted the most relevant sections from your document above."
         
         return {
             "direct_answer": direct_answer if referenced_clauses else "I'm unable to process your question due to a system error.",
@@ -506,8 +413,8 @@ Analyze the provided document sections and answer the user's query. You must res
                 "provider_type": "primary"
             }
         
-        # Add empty slots for missing Groq providers
-        for i in range(len(self.groq_providers) + 1, 4):
+        # Add empty slots for missing Groq providers (up to 4 total)
+        for i in range(len(self.groq_providers) + 1, 5):
             status[f"groq_{i}"] = {
                 "available": False,
                 "rate_limited": False,
@@ -515,26 +422,6 @@ Analyze the provided document sections and answer the user's query. You must res
                 "model": "Not configured",
                 "last_rate_limit_time": None,
                 "provider_type": "primary"
-            }
-        
-        # Status for Together AI backup
-        if self.together_provider:
-            status["together"] = {
-                "available": not self.together_provider.is_rate_limited(),
-                "rate_limited": self.together_provider.is_rate_limited(),
-                "consecutive_failures": self.together_provider.consecutive_failures,
-                "model": self.together_provider.model_name,
-                "last_rate_limit_time": self.together_provider.last_rate_limit_time,
-                "provider_type": "backup"
-            }
-        else:
-            status["together"] = {
-                "available": False,
-                "rate_limited": False,
-                "consecutive_failures": 0,
-                "model": "Not configured",
-                "last_rate_limit_time": None,
-                "provider_type": "backup"
             }
         
         return status
